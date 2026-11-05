@@ -8,7 +8,7 @@ import {
   Pencil, UserX, UserCheck, Plus, RefreshCw, Save, KeyRound, LockKeyhole, ChevronDown
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL?.replace(/\/$/, '');
+const API = (import.meta as ImportMeta & { env: { VITE_API_URL?: string } }).env.VITE_API_URL?.replace(/\/$/, '');
 
 type User = {
   id: number;
@@ -102,6 +102,7 @@ export default function App() {
   };
 
   const isPortal = Boolean(user);
+  const portalUser = user as User;
 
   useEffect(() => {
     if (!token) return;
@@ -440,9 +441,9 @@ export default function App() {
         <main className="portal">
           <aside className="sidebar">
             <div className="usercard">
-              <div className="avatar">{user.name.slice(0, 1)}</div>
-              <b>{user.name}</b>
-              <span>{user.role.toUpperCase()}</span>
+              <div className="avatar">{portalUser.name.slice(0, 1)}</div>
+              <b>{portalUser.name}</b>
+              <span>{portalUser.role.toUpperCase()}</span>
             </div>
 
             {navPortal.map((item) => (
@@ -482,10 +483,10 @@ export default function App() {
               </span>
             </div>
 
-            {page === 'Dashboard' && user.role === 'student' ? (
+            {page === 'Dashboard' && portalUser.role === 'student' ? (
               <StudentDashboard
                 token={token}
-                user={user}
+                user={portalUser}
                 dashboard={dashboard}
                 go={go}
               />
@@ -555,19 +556,19 @@ export default function App() {
                   </div>
                 </div>
               </>
-            ) : page === 'Profile' && user.role === 'student' ? (
-              <StudentProfile token={token} user={user} />
-            ) : page === 'Fees' && user.role === 'student' ? (
+            ) : page === 'Profile' && portalUser.role === 'student' ? (
+              <StudentProfile token={token} user={portalUser} />
+            ) : page === 'Fees' && portalUser.role === 'student' ? (
               <StudentFees token={token} rows={rows} />
-            ) : page === 'Announcements' && user.role === 'student' ? (
+            ) : page === 'Announcements' && portalUser.role === 'student' ? (
               <StudentAnnouncements rows={dashboard.announcements || []} />
-            ) : page === 'Announcements' && user.role === 'teacher' ? (
+            ) : page === 'Announcements' && portalUser.role === 'teacher' ? (
               <TeacherAnnouncements rows={dashboard.announcements || []} />
             ) : resourceMap[page] ? (
               <ResourceView
                 page={page}
                 rows={rows}
-                role={user.role}
+                role={portalUser.role}
                 token={token}
                 form={form}
                 setForm={setForm}
@@ -1167,8 +1168,8 @@ function ResourceView({
         if (cancelled) return;
         const subjectRows = Array.isArray(subjectData) ? subjectData : (subjectData?.subjects || []);
         const classRows = Array.isArray(classData) ? classData : (classData?.classes || []);
-        const savedSubjects = [...new Set(subjectRows.map((item: any) => String(item.name || '').trim()).filter(Boolean))];
-        const savedClasses = [...new Set(classRows.map((item: any) => String(item.name || '').trim()).filter(Boolean))];
+        const savedSubjects = [...new Set<string>(subjectRows.map((item: any) => String(item.name || '').trim()).filter((name: string) => Boolean(name)))];
+        const savedClasses = [...new Set<string>(classRows.map((item: any) => String(item.name || '').trim()).filter((name: string) => Boolean(name)))];
         setTeacherSubjectOptions(savedSubjects.length ? savedSubjects : subjects);
         setTeacherClassOptions(savedClasses.length ? savedClasses : classes);
       })
@@ -1374,7 +1375,7 @@ function ResourceView({
   }).format(Number(value || 0));
 
   const title = (value: string) =>
-    value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+    value.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
   const classRowsForDisplay = (() => {
     if (page !== 'Classes') return [];
@@ -2570,7 +2571,7 @@ function StudentFees({ token, rows }: any) {
             <article className="panel student-fee-card" key={fee.id}>
               <div className="student-fee-card-heading">
                 <div><span className="eyebrow">{fee.session}</span><h3>{fee.term}</h3></div>
-                <span className={`status ${String(fee.status || 'Unpaid').toLowerCase().replaceAll(' ', '-')}`}>{fee.status || 'Unpaid'}</span>
+                <span className={`status ${String(fee.status || 'Unpaid').toLowerCase().replace(/ /g, '-')}`}>{fee.status || 'Unpaid'}</span>
               </div>
               <div className="student-fee-amounts">
                 <div><span>Fee amount</span><strong>{money(fee.amount)}</strong></div>
@@ -3086,7 +3087,7 @@ function StudentDashboard({ token, user, dashboard, go }: any) {
                     <b>{item.session} · {item.term}</b>
                     <small>Paid {money(Number(item.paid || 0))} of {money(Number(item.amount || 0))}</small>
                   </div>
-                  <span className={`status ${String(item.status || '').toLowerCase().replaceAll(' ', '-')}`}>
+                  <span className={`status ${String(item.status || '').toLowerCase().replace(/ /g, '-')}`}>
                     {item.status || 'Unpaid'}
                   </span>
                 </div>
