@@ -379,7 +379,7 @@ export default function App() {
           onClick={() => go(isPortal ? 'Dashboard' : 'Home')}
         >
           <span className="brandmark">
-            <GraduationCap size={28} />
+            <img src="/images/logo.jpeg" alt="Best Builder College logo" />
           </span>
           <span>
             <b>BEST BUILDER</b>
@@ -700,7 +700,7 @@ export default function App() {
 
       <footer className="footer">
         <div className="footer-brand">
-          <GraduationCap />
+          <img src="/images/logo.jpeg" alt="Best Builder College logo" />
           <div>
             <b>BEST BUILDER COLLEGE</b>
             <small>Knowledge & Moral</small>
