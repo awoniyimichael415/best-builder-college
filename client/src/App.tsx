@@ -1004,10 +1004,18 @@ function PublicPage({ page, go }: any) {
               object-fit: contain;
             }
             .proprietor-copy h2 {
-              margin: 8px 0 14px;
+              margin: 8px 0 10px;
               color: #12315a;
               font-size: clamp(1.65rem, 3vw, 2.3rem);
               line-height: 1.2;
+            }
+            .proprietor-qualification {
+              display: inline-block;
+              margin: 0 0 8px;
+              color: #287bb8;
+              font-size: 0.98rem;
+              font-weight: 700;
+              letter-spacing: 0.02em;
             }
             .proprietor-copy p {
               margin: 0;
@@ -1039,8 +1047,9 @@ function PublicPage({ page, go }: any) {
             />
           </div>
           <div className="proprietor-copy">
-            <span className="eyebrow">SCHOOL LEADERSHIP</span>
-            <h2 id="proprietor-title">Meet Our Proprietor</h2>
+            <span className="eyebrow">SCHOOL LEADERSHIP · PROPRIETOR</span>
+            <h2 id="proprietor-title">Ajiboye Mahruff Adesola</h2>
+            <span className="proprietor-qualification">O.N.D, B.A, M.A</span>
             <div className="proprietor-rule" />
             <p>
               Best Builder College is guided by a commitment to qualitative,
