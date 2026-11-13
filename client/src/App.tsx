@@ -5,7 +5,7 @@ import {
   ShieldCheck, Phone, MapPin, Mail, LayoutDashboard,
   LogOut, UserRound, ClipboardList, Wallet, Megaphone,
   School, BookMarked, CheckCircle2, Clock3, Search,
-  Pencil, UserX, UserCheck, Plus, RefreshCw, Save, KeyRound, LockKeyhole, ChevronDown
+  Pencil, UserX, UserCheck, Plus, RefreshCw, Save, KeyRound, LockKeyhole, ChevronDown, Trash2
 } from 'lucide-react';
 
 const API = (import.meta as ImportMeta & { env: { VITE_API_URL?: string } }).env.VITE_API_URL?.replace(/\/$/, '');
@@ -253,6 +253,28 @@ export default function App() {
       setNotice('Status updated successfully.');
     } catch (e: any) {
       setError(e.message);
+    }
+  }
+
+  async function deleteAdmission(id: number, applicantName: string) {
+    const confirmed = window.confirm(
+      `Permanently delete the admission application for ${applicantName}? This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setNotice('');
+
+    try {
+      await request(`/admissions/${id}`, token, { method: 'DELETE' });
+      await loadResource('Admissions');
+
+      const dashboardData = await request('/dashboard', token);
+      setDashboard(dashboardData);
+      setNotice(`Admission application for ${applicantName} was deleted successfully.`);
+    } catch (e: any) {
+      setError(e.message || 'Could not delete this admission application.');
     }
   }
 
@@ -575,6 +597,7 @@ export default function App() {
                 saveRecord={saveRecord}
                 updateRecord={updateRecord}
                 updateStatus={updateStatus}
+                deleteAdmission={deleteAdmission}
                 recordFeePayment={recordFeePayment}
                 setStudentActive={setStudentActive}
                 setTeacherActive={setTeacherActive}
@@ -1138,7 +1161,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -2035,6 +2058,16 @@ function ResourceView({
                         <option>Approved</option>
                         <option>Rejected</option>
                       </select>
+                      <button
+                        type="button"
+                        className="icon-action deactivate-action"
+                        onClick={() => deleteAdmission(row.id, row.applicant_name)}
+                        title={`Delete admission for ${row.applicant_name}`}
+                        aria-label={`Delete admission for ${row.applicant_name}`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
+                      </button>
                     </div>
                   </td>
                 )}
