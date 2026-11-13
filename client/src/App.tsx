@@ -278,6 +278,28 @@ export default function App() {
     }
   }
 
+  async function deleteStudent(id: number, studentName: string) {
+    const confirmed = window.confirm(
+      `Permanently delete the student record for ${studentName}? This cannot be undone. Any linked portal account or school records may prevent deletion.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setNotice('');
+
+    try {
+      await request(`/students/${id}`, token, { method: 'DELETE' });
+      await loadResource('Students');
+
+      const dashboardData = await request('/dashboard', token);
+      setDashboard(dashboardData);
+      setNotice(`Student record for ${studentName} was deleted successfully.`);
+    } catch (e: any) {
+      setError(e.message || 'Could not delete this student record.');
+    }
+  }
+
   async function recordFeePayment(feeId: number, payment: any) {
     setError('');
     setNotice('');
@@ -598,6 +620,7 @@ export default function App() {
                 updateRecord={updateRecord}
                 updateStatus={updateStatus}
                 deleteAdmission={deleteAdmission}
+                deleteStudent={deleteStudent}
                 recordFeePayment={recordFeePayment}
                 setStudentActive={setStudentActive}
                 setTeacherActive={setTeacherActive}
@@ -1161,7 +1184,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, deleteAdmission, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, deleteStudent, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -2141,6 +2164,17 @@ function ResourceView({
                       >
                         <Pencil size={15} />
                         <span>Edit</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="icon-action deactivate-action"
+                        onClick={() => deleteStudent(row.id, row.full_name)}
+                        title={`Permanently delete ${row.full_name}`}
+                        aria-label={`Permanently delete ${row.full_name}`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
                       </button>
 
                       {Number(row.active) === 1 ? (
