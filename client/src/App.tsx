@@ -370,6 +370,25 @@ export default function App() {
     }
   }
 
+  async function deleteResult(id: number, resultLabel: string) {
+    const confirmed = window.confirm(
+      `Permanently delete this result record (${resultLabel})? This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setNotice('');
+
+    try {
+      await request(`/results/${id}`, token, { method: 'DELETE' });
+      await loadResource('Results');
+      setNotice(`Result record ${resultLabel} was deleted successfully.`);
+    } catch (e: any) {
+      setError(e.message || 'Could not delete this result record.');
+    }
+  }
+
   async function deleteAnnouncement(id: number, announcementTitle: string) {
     const confirmed = window.confirm(
       `Permanently delete the announcement "${announcementTitle}"? This will also remove its read receipts for all users. This action cannot be undone.`
@@ -761,6 +780,7 @@ export default function App() {
                 updateRecord={updateRecord}
                 updateStatus={updateStatus}
                 deleteFee={deleteFee}
+                deleteResult={deleteResult}
                 deleteAnnouncement={deleteAnnouncement}
                 markAnnouncementRead={markAnnouncementRead}
                 deleteAdmission={deleteAdmission}
@@ -1329,7 +1349,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, deleteAnnouncement, markAnnouncementRead, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, deleteResult, deleteAnnouncement, markAnnouncementRead, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -1699,6 +1719,22 @@ function ResourceView({
     setSelectedTeacher(null);
     setShowForm(true);
     setStudentSearch('');
+  }
+
+  function beginEditResult(result: any) {
+    setForm({
+      student_id: Number(result.student_id),
+      subject: result.subject || '',
+      class_name: result.class_name || '',
+      session: result.session || '',
+      term: result.term || '',
+      ca: String(result.ca ?? ''),
+      exam: String(result.exam ?? '')
+    });
+    setEditingId(Number(result.id));
+    setStudentSearch('');
+    setStudentDropdownOpen(false);
+    setShowForm(true);
   }
 
   function beginEditFee(fee: any) {
@@ -2386,7 +2422,7 @@ function ResourceView({
                 <th key={column}>{page === 'Subjects' && column === 'name' ? 'Subject' : page === 'Results' && column === 'student_id' ? 'Admission No.' : title(column)}</th>
               ))}
               {(page === 'Students' || page === 'Teachers') && admin ? <th>Portal account</th> : null}
-              {page === 'Admissions' || page === 'Results' ? <th>Action</th> : null}
+              {page === 'Admissions' || page === 'Results' ? <th>Actions</th> : null}
               {(page === 'Students' || page === 'Teachers' || (page === 'Fees' && admin) || (page === 'Announcements' && admin)) ? <th>Actions</th> : null}
             </tr>
           </thead>
@@ -2468,14 +2504,41 @@ function ResourceView({
 
                 {page === 'Results' && admin && (
                   <td>
-                    <select
-                      value={row.status}
-                      onChange={(e) => updateStatus(row.id, e.target.value)}
-                    >
-                      <option>Submitted</option>
-                      <option>Approved</option>
-                      <option>Rejected</option>
-                    </select>
+                    <div className="student-actions">
+                      <select
+                        aria-label={`Result status for ${studentOptions.find((student) => Number(student.id) === Number(row.student_id))?.full_name || 'student'} — ${row.subject || 'subject'}`}
+                        value={row.status || 'Submitted'}
+                        onChange={(e) => updateStatus(row.id, e.target.value)}
+                      >
+                        <option>Submitted</option>
+                        <option>Approved</option>
+                        <option>Rejected</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="icon-action edit-action"
+                        onClick={() => beginEditResult(row)}
+                        title={`Edit ${row.subject || 'result'} result`}
+                        aria-label={`Edit result ${row.id}`}
+                      >
+                        <Pencil size={15} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-action deactivate-action"
+                        onClick={() => {
+                          const student = studentOptions.find((item) => Number(item.id) === Number(row.student_id));
+                          const label = `${student?.full_name || `Student #${row.student_id}`} · ${row.subject || 'Subject'} · ${row.session || ''} · ${row.term || ''}`;
+                          deleteResult(Number(row.id), label);
+                        }}
+                        title={`Delete ${row.subject || 'result'} result`}
+                        aria-label={`Delete result ${row.id}`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </td>
                 )}
 
