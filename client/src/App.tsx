@@ -608,6 +608,8 @@ export default function App() {
               <StudentAnnouncements rows={dashboard.announcements || []} />
             ) : page === 'Announcements' && portalUser.role === 'teacher' ? (
               <TeacherAnnouncements rows={dashboard.announcements || []} />
+            ) : page === 'Results' && portalUser.role === 'student' ? (
+              <StudentResults token={token} user={portalUser} rows={rows} />
             ) : resourceMap[page] ? (
               <ResourceView
                 page={page}
@@ -3000,6 +3002,322 @@ function StudentProfile({ token, user }: any) {
           <p>Your profile could not be found. Please contact the school administrator.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+type StudentResultProfile = {
+  full_name?: string;
+  admission_no?: string;
+  class_name?: string;
+};
+
+function StudentResults({ token, user, rows }: any) {
+  const [profile, setProfile] = useState<StudentResultProfile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState('');
+  const [selectedGroup, setSelectedGroup] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      setLoadingProfile(true);
+      setProfileError('');
+      try {
+        const data = await request('/student/profile', token);
+        if (!cancelled) setProfile(data?.profile || null);
+      } catch (error: any) {
+        if (!cancelled) {
+          setProfileError(error.message || 'Could not load your student details.');
+        }
+      } finally {
+        if (!cancelled) setLoadingProfile(false);
+      }
+    }
+
+    loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, user.id]);
+
+  const approvedRows = (Array.isArray(rows) ? rows : []).filter(
+    (item: any) => String(item.status || '').toLowerCase() === 'approved'
+  );
+
+  const groups = Array.from(
+    new Map(
+      approvedRows.map((item: any) => {
+        const key = `${item.session || 'Session not specified'}|||${item.term || 'Term not specified'}`;
+        return [key, {
+          key,
+          session: item.session || 'Session not specified',
+          term: item.term || 'Term not specified',
+          className: item.class_name || profile?.class_name || '—',
+        }];
+      })
+    ).values()
+  );
+
+  const activeGroup = groups.find((item: any) => item.key === selectedGroup) || groups[0];
+  const reportRows = activeGroup
+    ? approvedRows.filter((item: any) =>
+        `${item.session || 'Session not specified'}|||${item.term || 'Term not specified'}` === activeGroup.key
+      )
+    : [];
+
+  function downloadResult() {
+    if (!reportRows.length) return;
+    const previousTitle = document.title;
+    const studentName = profile?.full_name || user.name || 'Student';
+    document.title = `Best Builder College Result - ${studentName} - ${activeGroup?.session} ${activeGroup?.term}`;
+    window.print();
+    window.setTimeout(() => {
+      document.title = previousTitle;
+    }, 1000);
+  }
+
+  const score = (value: unknown) =>
+    value === null || value === undefined || value === '' ? '—' : Number(value);
+
+  return (
+    <div className="student-results-page">
+      <style>{`
+        .student-results-toolbar {
+          display: flex;
+          align-items: end;
+          justify-content: space-between;
+          gap: 16px;
+          flex-wrap: wrap;
+          margin-bottom: 20px;
+        }
+        .student-results-toolbar label {
+          display: grid;
+          gap: 7px;
+          min-width: min(100%, 260px);
+          color: #344b65;
+          font-weight: 600;
+        }
+        .student-results-toolbar select {
+          min-height: 44px;
+          padding: 9px 12px;
+          border: 1px solid #cfdae7;
+          border-radius: 9px;
+          background: #fff;
+        }
+        .student-result-sheet {
+          padding: clamp(18px, 3vw, 32px);
+          border: 1px solid #dce6f0;
+          border-radius: 16px;
+          background: #fff;
+        }
+        .student-result-school-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding-bottom: 18px;
+          border-bottom: 3px solid #17365d;
+        }
+        .student-result-school-header img {
+          width: 76px;
+          height: 76px;
+          object-fit: contain;
+        }
+        .student-result-school-header h2 {
+          margin: 0 0 5px;
+          color: #17365d;
+        }
+        .student-result-school-header p {
+          margin: 0;
+          color: #52657a;
+        }
+        .student-result-title {
+          margin: 22px 0 16px;
+          text-align: center;
+          color: #17365d;
+        }
+        .student-result-meta {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+        .student-result-meta div {
+          padding: 11px;
+          border-radius: 8px;
+          background: #f1f6fb;
+        }
+        .student-result-meta span {
+          display: block;
+          margin-bottom: 4px;
+          color: #63758a;
+          font-size: 12px;
+        }
+        .student-result-meta strong { color: #203b5b; }
+        .student-result-table { width: 100%; border-collapse: collapse; }
+        .student-result-table th, .student-result-table td {
+          padding: 11px 10px;
+          border: 1px solid #d8e1eb;
+          text-align: left;
+        }
+        .student-result-table th {
+          color: #fff;
+          background: #17365d;
+        }
+        .student-result-table tfoot td {
+          font-weight: 700;
+          background: #edf4fa;
+        }
+        .student-result-footnote {
+          margin-top: 20px;
+          color: #52657a;
+          font-size: 13px;
+        }
+        @media (max-width: 600px) {
+          .student-result-meta { grid-template-columns: 1fr 1fr; }
+          .student-result-school-header img { width: 58px; height: 58px; }
+          .student-result-table th, .student-result-table td {
+            padding: 8px 6px;
+            font-size: 12px;
+          }
+        }
+        @media print {
+          @page { size: A4 portrait; margin: 14mm; }
+          body * { visibility: hidden !important; }
+          #student-result-print, #student-result-print * {
+            visibility: visible !important;
+          }
+          #student-result-print {
+            position: absolute !important;
+            inset: 0 auto auto 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+          }
+          #student-result-print .student-result-table th {
+            color: #17365d !important;
+            background: #e8f0f8 !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          #student-result-print .student-result-meta div,
+          #student-result-print .student-result-table tfoot td {
+            background: #f1f6fb !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+        }
+      `}</style>
+
+      {profileError && <div className="alert error" role="alert">{profileError}</div>}
+
+      <div className="panel">
+        <div className="panel-title">
+          <div>
+            <h3>Your approved academic results</h3>
+            <p className="muted">Select a term to prepare a printable result sheet.</p>
+          </div>
+          <ClipboardList />
+        </div>
+
+        {loadingProfile ? (
+          <p className="muted">Loading your student details…</p>
+        ) : (
+          <>
+            {groups.length > 0 && (
+              <div className="student-results-toolbar">
+                <label>
+                  Academic session and term
+                  <select
+                    value={activeGroup?.key || ''}
+                    onChange={(e) => setSelectedGroup(e.target.value)}
+                  >
+                    {groups.map((group: any) => (
+                      <option key={group.key} value={group.key}>
+                        {group.session} · {group.term}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="primary-btn"
+                  onClick={downloadResult}
+                  disabled={!reportRows.length}
+                >
+                  <ClipboardList size={16} /> Download Result as PDF
+                </button>
+              </div>
+            )}
+
+            {reportRows.length ? (
+              <section id="student-result-print" className="student-result-sheet">
+                <header className="student-result-school-header">
+                  <img src="/images/logo.jpeg" alt="Best Builder College logo" />
+                  <div>
+                    <h2>BEST BUILDER COLLEGE</h2>
+                    <p>47, Wakajaye Zone 11, Ede, Osun State, Nigeria</p>
+                    <p><strong>Knowledge &amp; Moral</strong></p>
+                  </div>
+                </header>
+
+                <h3 className="student-result-title">STUDENT ACADEMIC RESULT</h3>
+
+                <div className="student-result-meta">
+                  <div><span>Student Name</span><strong>{profile?.full_name || user.name}</strong></div>
+                  <div><span>Admission Number</span><strong>{profile?.admission_no || '—'}</strong></div>
+                  <div><span>Class</span><strong>{activeGroup?.className || profile?.class_name || '—'}</strong></div>
+                  <div><span>Academic Session</span><strong>{activeGroup?.session}</strong></div>
+                  <div><span>Term</span><strong>{activeGroup?.term}</strong></div>
+                  <div><span>Result Status</span><strong>Approved</strong></div>
+                </div>
+
+                <table className="student-result-table">
+                  <thead>
+                    <tr>
+                      <th>Subject</th>
+                      <th>CA</th>
+                      <th>Examination</th>
+                      <th>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportRows.map((item: any) => (
+                      <tr key={item.id}>
+                        <td>{item.subject || '—'}</td>
+                        <td>{score(item.ca)}</td>
+                        <td>{score(item.exam)}</td>
+                        <td>{score(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3}>Subjects recorded</td>
+                      <td>{reportRows.length}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+
+                <p className="student-result-footnote">
+                  This result sheet contains approved results released by Best Builder College.
+                  For enquiries or corrections, please contact the school administrator.
+                </p>
+              </section>
+            ) : (
+              <div className="student-empty-state">
+                <ClipboardList size={28} />
+                <b>No approved results available</b>
+                <p>Your approved results will appear here when they are released by the school.</p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
