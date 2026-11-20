@@ -892,6 +892,7 @@ app.get('/api/dashboard', auth, async (req: AuthRequest, res) => {
       classes,
       pendingAdmissions,
       announcements,
+      unreadAnnouncements,
       recentAdmissions,
     ] = await Promise.all([
       query('SELECT COUNT(*)::int AS n FROM students WHERE active = TRUE'),
@@ -901,9 +902,21 @@ app.get('/api/dashboard', auth, async (req: AuthRequest, res) => {
         "SELECT COUNT(*)::int AS n FROM admissions WHERE status = 'Pending'",
       ),
       query(
-        `SELECT * FROM announcements
-         WHERE published = TRUE
-         ORDER BY id DESC LIMIT 5`,
+        `SELECT a.*, (ar.announcement_id IS NULL) AS is_unread
+         FROM announcements a
+         LEFT JOIN announcement_reads ar
+           ON ar.announcement_id = a.id AND ar.user_id = $1
+         WHERE a.published = TRUE
+         ORDER BY a.id DESC LIMIT 5`,
+        [req.user!.id],
+      ),
+      query(
+        `SELECT COUNT(*)::int AS n
+         FROM announcements a
+         LEFT JOIN announcement_reads ar
+           ON ar.announcement_id = a.id AND ar.user_id = $1
+         WHERE a.published = TRUE AND ar.announcement_id IS NULL`,
+        [req.user!.id],
       ),
       isAdmin
         ? query(
@@ -919,6 +932,7 @@ app.get('/api/dashboard', auth, async (req: AuthRequest, res) => {
       classes: classes.rows[0].n,
       pendingAdmissions: pendingAdmissions.rows[0].n,
       announcements: announcements.rows,
+      unreadAnnouncements: unreadAnnouncements.rows[0].n,
       recentAdmissions: recentAdmissions.rows,
     });
   } catch (error) {
@@ -926,6 +940,47 @@ app.get('/api/dashboard', auth, async (req: AuthRequest, res) => {
     return res.status(500).json({
       error: 'Could not load the dashboard.',
     });
+  }
+});
+
+
+// ANNOUNCEMENT READ TRACKING
+// Every account has its own receipt; opening a notice never marks it read for others.
+app.post('/api/announcements/:id/read', auth, async (req: AuthRequest, res) => {
+  const id = validId(req.params.id);
+  if (!id) return res.status(400).json({ error: 'Invalid announcement ID.' });
+
+  try {
+    const announcement = await query(
+      `SELECT id FROM announcements
+       WHERE id = $1 AND (published = TRUE OR $2 = 'admin')`,
+      [id, req.user!.role],
+    );
+
+    if (!announcement.rows[0]) {
+      return res.status(404).json({ error: 'Announcement not found.' });
+    }
+
+    await query(
+      `INSERT INTO announcement_reads (announcement_id, user_id)
+       VALUES ($1, $2)
+       ON CONFLICT (announcement_id, user_id) DO NOTHING`,
+      [id, req.user!.id],
+    );
+
+    const count = await query<{ unread_count: number }>(
+      `SELECT COUNT(*)::int AS unread_count
+       FROM announcements a
+       LEFT JOIN announcement_reads ar
+         ON ar.announcement_id = a.id AND ar.user_id = $1
+       WHERE a.published = TRUE AND ar.announcement_id IS NULL`,
+      [req.user!.id],
+    );
+
+    return res.json({ success: true, unreadCount: count.rows[0].unread_count });
+  } catch (error) {
+    console.error('Could not mark announcement as read:', error);
+    return res.status(500).json({ error: 'Could not update announcement read status.' });
   }
 });
 
@@ -1238,6 +1293,27 @@ app.post('/api/teachers/:id/account', auth, roles('admin'), async (req: AuthRequ
 for (const [key, cfg] of Object.entries(resources)) {
   app.get(`/api/${key}`, auth, async (req: AuthRequest, res) => {
     const user = req.user!;
+
+    // Every authenticated role can read published announcements.
+    // Admins can also see drafts for management.
+    if (key === 'announcements') {
+      try {
+        const result = await query(
+          `SELECT a.*,
+                  (ar.announcement_id IS NULL) AS is_unread
+           FROM announcements a
+           LEFT JOIN announcement_reads ar
+             ON ar.announcement_id = a.id AND ar.user_id = $1
+           WHERE ($2 = 'admin' OR a.published = TRUE)
+           ORDER BY a.id DESC LIMIT 500`,
+          [user.id, user.role],
+        );
+        return res.json(result.rows);
+      } catch (error) {
+        console.error('Could not load announcements:', error);
+        return res.status(500).json({ error: 'Could not load announcements.' });
+      }
+    }
 
     if (
       cfg.adminOnly &&
