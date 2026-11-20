@@ -300,6 +300,27 @@ export default function App() {
     }
   }
 
+  async function deleteTeacher(id: number, teacherName: string) {
+    const confirmed = window.confirm(
+      `Permanently delete the teacher record for ${teacherName}? This action cannot be undone. If the teacher has linked portal or academic records, the server may prevent deletion to protect those records.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setNotice('');
+
+    try {
+      await request(`/teachers/${id}`, token, { method: 'DELETE' });
+      await loadResource('Teachers');
+      const dashboardData = await request('/dashboard', token);
+      setDashboard(dashboardData);
+      setNotice(`Teacher record for ${teacherName} was deleted successfully.`);
+    } catch (e: any) {
+      setError(e.message || 'Could not delete this teacher record.');
+    }
+  }
+
   async function recordFeePayment(feeId: number, payment: any) {
     setError('');
     setNotice('');
@@ -623,6 +644,7 @@ export default function App() {
                 updateStatus={updateStatus}
                 deleteAdmission={deleteAdmission}
                 deleteStudent={deleteStudent}
+                deleteTeacher={deleteTeacher}
                 recordFeePayment={recordFeePayment}
                 setStudentActive={setStudentActive}
                 setTeacherActive={setTeacherActive}
@@ -1186,7 +1208,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, deleteAdmission, deleteStudent, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -1540,6 +1562,22 @@ function ResourceView({
 
     setEditingId(student.id);
     setShowForm(true);
+  }
+
+  function beginEditTeacher(teacher: any) {
+    setForm({
+      full_name: teacher.full_name || '',
+      phone: teacher.phone || '',
+      email: teacher.email || '',
+      qualification: teacher.qualification || '',
+      subjects: splitTeacherSelections(teacher.subjects).join(', '),
+      classes: splitTeacherSelections(teacher.classes).join(', ')
+    });
+    setEditingId(Number(teacher.id));
+    setTeacherDropdownOpen(null);
+    setSelectedTeacher(null);
+    setShowForm(true);
+    setStudentSearch('');
   }
 
   function cancelForm() {
@@ -2375,6 +2413,16 @@ function ResourceView({
                       >
                         <ClipboardList size={14} /> Show details
                       </button>
+                      <button
+                        type="button"
+                        className="icon-action deactivate-action"
+                        onClick={() => deleteTeacher(row.id, row.full_name)}
+                        title={`Permanently delete ${row.full_name}`}
+                        aria-label={`Delete teacher ${row.full_name}`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
+                      </button>
                       {!row.portal_account_email && Number(row.active) === 1 && (
                         <button
                           type="button"
@@ -2530,8 +2578,15 @@ function ResourceView({
               ))}
             </div>
 
-            <div className="form-actions" style={{ justifyContent: 'flex-end', marginTop: '20px' }}>
-              <button type="button" className="primary-btn" onClick={() => setSelectedTeacher(null)}>Done</button>
+            <div className="form-actions" style={{ justifyContent: 'flex-end', marginTop: '20px', gap: '10px' }}>
+              <button type="button" className="secondary-btn" onClick={() => setSelectedTeacher(null)}>Close</button>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={() => beginEditTeacher(selectedTeacher)}
+              >
+                <Pencil size={15} /> Edit teacher
+              </button>
             </div>
           </section>
         </div>
