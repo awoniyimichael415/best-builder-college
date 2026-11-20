@@ -141,6 +141,12 @@ export default function App() {
   }
 
   async function markAnnouncementRead(id: number) {
+    const currentItem = [
+      ...(dashboard.announcements || []),
+      ...(Array.isArray(rows) ? rows : [])
+    ].find((item: any) => Number(item.id) === Number(id));
+    if (currentItem && !currentItem.is_unread) return;
+
     try {
       const result = await request(`/announcements/${id}/read`, token, { method: 'POST' });
       setDashboard((current: any) => ({
@@ -255,6 +261,10 @@ export default function App() {
       setNotice('Record updated successfully.');
       setForm({});
       await loadResource(page);
+      if (page === 'Announcements') {
+        const dashboardData = await request('/dashboard', token);
+        setDashboard(dashboardData);
+      }
     } catch (e: any) {
       setError(e.message);
     }
@@ -357,6 +367,25 @@ export default function App() {
       setNotice(`Fee record ${feeLabel} was deleted successfully.`);
     } catch (e: any) {
       setError(e.message || 'Could not delete this fee record.');
+    }
+  }
+
+  async function deleteAnnouncement(id: number, announcementTitle: string) {
+    const confirmed = window.confirm(
+      `Permanently delete the announcement "${announcementTitle}"? This will also remove its read receipts for all users. This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setError('');
+    setNotice('');
+    try {
+      await request(`/announcements/${id}`, token, { method: 'DELETE' });
+      await loadResource('Announcements');
+      const dashboardData = await request('/dashboard', token);
+      setDashboard(dashboardData);
+      setNotice(`Announcement "${announcementTitle}" was deleted successfully.`);
+    } catch (e: any) {
+      setError(e.message || 'Could not delete this announcement.');
     }
   }
 
@@ -478,6 +507,32 @@ export default function App() {
 
   return (
     <div className="app">
+      <style>{`
+        .announcement-nav-count {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 20px;
+          height: 20px;
+          margin-left: auto;
+          padding: 0 6px;
+          border-radius: 999px;
+          color: #fff;
+          background: #dc2626;
+          font-size: 11px;
+          font-weight: 800;
+          line-height: 1;
+        }
+        .navlink .announcement-nav-count { margin-left: 7px; }
+        .side-link .announcement-nav-count { margin-left: auto; }
+        .announcement-unread-card {
+          border-left: 4px solid #dc2626 !important;
+          background: #fff8f8 !important;
+        }
+        .announcement-read-card {
+          border-left: 4px solid #dbe3ed !important;
+        }
+      `}</style>
       <header className="topbar">
         <button
           className="brand"
@@ -508,6 +563,11 @@ export default function App() {
               onClick={() => go(item)}
             >
               {item}
+              {item === 'Announcements' && Number(dashboard.unreadAnnouncements || 0) > 0 && (
+                <span className="announcement-nav-count" aria-label={`${dashboard.unreadAnnouncements} unread announcements`}>
+                  {dashboard.unreadAnnouncements}
+                </span>
+              )}
             </button>
           ))}
 
@@ -569,6 +629,11 @@ export default function App() {
                  item === 'Announcements' ? <Megaphone /> :
                  <ClipboardList />}
                 {item}
+                {item === 'Announcements' && Number(dashboard.unreadAnnouncements || 0) > 0 && (
+                  <span className="announcement-nav-count" aria-label={`${dashboard.unreadAnnouncements} unread announcements`}>
+                    {dashboard.unreadAnnouncements}
+                  </span>
+                )}
               </button>
             ))}
           </aside>
@@ -696,6 +761,7 @@ export default function App() {
                 updateRecord={updateRecord}
                 updateStatus={updateStatus}
                 deleteFee={deleteFee}
+                deleteAnnouncement={deleteAnnouncement}
                 markAnnouncementRead={markAnnouncementRead}
                 deleteAdmission={deleteAdmission}
                 deleteStudent={deleteStudent}
@@ -1263,7 +1329,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, markAnnouncementRead, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, deleteAnnouncement, markAnnouncementRead, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -1649,6 +1715,16 @@ function ResourceView({
     setShowForm(true);
   }
 
+  function beginEditAnnouncement(announcement: any) {
+    setForm({
+      title: announcement.title || '',
+      body: announcement.body || '',
+      published: Boolean(announcement.published)
+    });
+    setEditingId(Number(announcement.id));
+    setShowForm(true);
+  }
+
   function cancelForm() {
     setStudentDropdownOpen(false);
     setStudentSearch('');
@@ -1786,7 +1862,7 @@ function ResourceView({
       {showForm && (
         <form className="record-form" onSubmit={handleSubmit}>
           <div className="form-section-heading">
-            <h3>{editingId !== null ? `Edit ${page === 'Teachers' ? 'teacher' : page === 'Fees' ? 'fee' : page === 'Students' ? 'student' : page.toLowerCase()} record` : page === 'Admissions' ? 'Add admission application' : `Add ${page.toLowerCase()} record`}</h3>
+            <h3>{editingId !== null ? `Edit ${page === 'Teachers' ? 'teacher' : page === 'Fees' ? 'fee' : page === 'Students' ? 'student' : page === 'Announcements' ? 'announcement' : page.toLowerCase()} record` : page === 'Admissions' ? 'Add admission application' : `Add ${page === 'Announcements' ? 'announcement' : page.toLowerCase()} record`}</h3>
             <p>
               {editingId !== null
                 ? 'Update the information below and save your changes.'
@@ -2111,6 +2187,22 @@ function ResourceView({
             ))}
           </div>
 
+          {page === 'Announcements' && admin && (
+            <label className="announcement-publish-toggle" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(form.published)}
+                onChange={(e) => setForm({ ...form, published: e.target.checked })}
+                style={{ width: '17px', height: '17px', minHeight: '17px' }}
+              />
+              <span>
+                <strong>Publish announcement</strong>
+                <small style={{ display: 'block', color: '#64748b', fontWeight: 400 }}>
+                  Published announcements are visible to teachers and students.
+                </small>
+              </span>
+            </label>
+          )}
           {page === 'Fees' && <p className="form-hint">Choose the student by name and admission number. The fee starts with ₦0 paid; record received money using the Record payment action after saving.</p>}
           {page === 'Results' && <p className="form-hint">Choose a student first. The class is filled automatically from the student record. Enter the academic session, term, subject, CA score and examination score.</p>}
           <div className="form-actions">
@@ -2295,7 +2387,7 @@ function ResourceView({
               ))}
               {(page === 'Students' || page === 'Teachers') && admin ? <th>Portal account</th> : null}
               {page === 'Admissions' || page === 'Results' ? <th>Action</th> : null}
-              {(page === 'Students' || page === 'Teachers' || (page === 'Fees' && admin)) ? <th>Actions</th> : null}
+              {(page === 'Students' || page === 'Teachers' || (page === 'Fees' && admin) || (page === 'Announcements' && admin)) ? <th>Actions</th> : null}
             </tr>
           </thead>
 
@@ -2583,6 +2675,33 @@ function ResourceView({
                         onClick={() => openPaymentHistory(row.id)}
                       >
                         {historyOpenId === row.id ? 'Hide history' : 'Payment history'}
+                      </button>
+                    </div>
+                  </td>
+                )}
+
+                {page === 'Announcements' && admin && (
+                  <td>
+                    <div className="student-actions">
+                      <button
+                        type="button"
+                        className="icon-action edit-action"
+                        onClick={() => beginEditAnnouncement(row)}
+                        title={`Edit announcement ${row.title}`}
+                        aria-label={`Edit announcement ${row.title}`}
+                      >
+                        <Pencil size={15} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-action deactivate-action"
+                        onClick={() => deleteAnnouncement(Number(row.id), row.title || 'Untitled announcement')}
+                        title={`Delete announcement ${row.title}`}
+                        aria-label={`Delete announcement ${row.title}`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
                       </button>
                     </div>
                   </td>
