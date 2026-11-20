@@ -321,6 +321,27 @@ export default function App() {
     }
   }
 
+  async function deleteFee(id: number, feeLabel: string) {
+    const confirmed = window.confirm(
+      `Permanently delete this fee record (${feeLabel})? Any payment transactions attached to this fee record will also be deleted from its payment history. This action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setNotice('');
+
+    try {
+      await request(`/fees/${id}`, token, { method: 'DELETE' });
+      await loadResource('Fees');
+      const dashboardData = await request('/dashboard', token);
+      setDashboard(dashboardData);
+      setNotice(`Fee record ${feeLabel} was deleted successfully.`);
+    } catch (e: any) {
+      setError(e.message || 'Could not delete this fee record.');
+    }
+  }
+
   async function recordFeePayment(feeId: number, payment: any) {
     setError('');
     setNotice('');
@@ -642,6 +663,7 @@ export default function App() {
                 saveRecord={saveRecord}
                 updateRecord={updateRecord}
                 updateStatus={updateStatus}
+                deleteFee={deleteFee}
                 deleteAdmission={deleteAdmission}
                 deleteStudent={deleteStudent}
                 deleteTeacher={deleteTeacher}
@@ -1208,7 +1230,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -1580,6 +1602,20 @@ function ResourceView({
     setStudentSearch('');
   }
 
+  function beginEditFee(fee: any) {
+    setForm({
+      student_id: Number(fee.student_id),
+      session: fee.session || '',
+      term: fee.term || '',
+      amount: String(fee.amount ?? '')
+    });
+    setEditingId(Number(fee.id));
+    setPaymentFee(null);
+    setStudentSearch('');
+    setStudentDropdownOpen(false);
+    setShowForm(true);
+  }
+
   function cancelForm() {
     setStudentDropdownOpen(false);
     setStudentSearch('');
@@ -1717,7 +1753,7 @@ function ResourceView({
       {showForm && (
         <form className="record-form" onSubmit={handleSubmit}>
           <div className="form-section-heading">
-            <h3>{editingId !== null ? `Edit ${page === 'Teachers' ? 'teacher' : 'student'} record` : page === 'Admissions' ? 'Add admission application' : `Add ${page.toLowerCase()} record`}</h3>
+            <h3>{editingId !== null ? `Edit ${page === 'Teachers' ? 'teacher' : page === 'Fees' ? 'fee' : page === 'Students' ? 'student' : page.toLowerCase()} record` : page === 'Admissions' ? 'Add admission application' : `Add ${page.toLowerCase()} record`}</h3>
             <p>
               {editingId !== null
                 ? 'Update the information below and save your changes.'
@@ -2473,6 +2509,30 @@ function ResourceView({
                         }}
                       >
                         <Wallet size={14} /> Record payment
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-action edit-action"
+                        onClick={() => beginEditFee(row)}
+                        title={`Edit fee record for ${studentOptions.find((student) => Number(student.id) === Number(row.student_id))?.full_name || 'student'}`}
+                        aria-label={`Edit fee record ${row.id}`}
+                      >
+                        <Pencil size={15} />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-action deactivate-action"
+                        onClick={() => {
+                          const student = studentOptions.find((item) => Number(item.id) === Number(row.student_id));
+                          const label = `${student?.full_name || `Student #${row.student_id}`} · ${row.session} · ${row.term}`;
+                          deleteFee(row.id, label);
+                        }}
+                        title="Permanently delete this fee record"
+                        aria-label={`Delete fee record ${row.id}`}
+                      >
+                        <Trash2 size={15} />
+                        <span>Delete</span>
                       </button>
                       <button
                         type="button"
