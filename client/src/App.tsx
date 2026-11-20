@@ -1193,6 +1193,7 @@ function ResourceView({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [paymentFee, setPaymentFee] = useState<any | null>(null);
   const [paymentForm, setPaymentForm] = useState({
@@ -1463,29 +1464,37 @@ function ResourceView({
     });
   })();
 
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+
   const filteredRows = page === 'Students'
     ? (rows as Student[]).filter((student) => {
-        const matchesSearch = [
-          student.admission_no,
-          student.full_name,
-          student.class_name,
-          student.guardian_phone,
-          student.guardian_name
-        ].some((value) =>
-          String(value || '').toLowerCase().includes(search.toLowerCase())
-        );
-
+        const matchesSearch = [student.admission_no, student.full_name]
+          .some((value) => String(value || '').toLocaleLowerCase().includes(normalizedSearch));
+        const matchesClass = !classFilter ||
+          String(student.class_name || '').trim().toLocaleLowerCase() === classFilter.toLocaleLowerCase();
         const isActive = Number(student.active) === 1;
-        return matchesSearch && (showInactive || isActive);
+        return matchesSearch && matchesClass && (showInactive || isActive);
       })
-    : page === 'Teachers'
-      ? rows.filter((teacher: any) => {
-          const matchesSearch = [teacher.full_name, teacher.email, teacher.phone, teacher.subjects, teacher.classes]
-            .some((value) => String(value || '').toLowerCase().includes(search.toLowerCase()));
-          const isActive = Number(teacher.active) === 1;
-          return matchesSearch && (showInactive || isActive);
+    : page === 'Admissions'
+      ? rows.filter((application: any) => {
+          const matchesSearch = [
+            application.applicant_name,
+            application.admission_no,
+            application.application_no,
+            application.application_number
+          ].some((value) => String(value || '').toLocaleLowerCase().includes(normalizedSearch));
+          const matchesClass = !classFilter ||
+            String(application.class_applying || '').trim().toLocaleLowerCase() === classFilter.toLocaleLowerCase();
+          return matchesSearch && matchesClass;
         })
-      : rows;
+      : page === 'Teachers'
+        ? rows.filter((teacher: any) => {
+            const matchesSearch = [teacher.full_name, teacher.email, teacher.phone, teacher.subjects, teacher.classes]
+              .some((value) => String(value || '').toLowerCase().includes(normalizedSearch));
+            const isActive = Number(teacher.active) === 1;
+            return matchesSearch && (showInactive || isActive);
+          })
+        : rows;
 
   const displayRows = page === 'Classes' ? classRowsForDisplay : filteredRows;
 
@@ -1578,35 +1587,61 @@ function ResourceView({
         )}
       </div>
 
-      {(page === 'Students' || page === 'Teachers') && admin && (
+      {(page === 'Students' || page === 'Teachers' || page === 'Admissions') && admin && (
         <div className="student-toolbar">
           <div className="student-search">
             <Search size={18} />
             <input
               type="search"
-              placeholder={page === 'Teachers' ? 'Search teacher name, email, phone or subject...' : 'Search name, admission number, class or guardian...'}
+              placeholder={
+                page === 'Teachers'
+                  ? 'Search teacher name, email, phone or subject...'
+                  : page === 'Admissions'
+                    ? 'Search applicant name or admission/application number...'
+                    : 'Search student name or admission number...'
+              }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search students"
+              aria-label={page === 'Admissions' ? 'Search admission applications' : page === 'Students' ? 'Search students' : 'Search teachers'}
             />
           </div>
 
-          <label className="inactive-toggle">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-            />
-            Show inactive
-          </label>
+          {(page === 'Students' || page === 'Admissions') && (
+            <label className="class-filter">
+              <span>{page === 'Admissions' ? 'Filter by applied class' : 'Filter by class'}</span>
+              <select
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                aria-label={page === 'Admissions' ? 'Filter admissions by applied class' : 'Filter students by class'}
+              >
+                <option value="">All classes</option>
+                {classes.map((className) => <option key={className} value={className}>{className}</option>)}
+              </select>
+            </label>
+          )}
+
+          {(page === 'Students' || page === 'Teachers') && (
+            <label className="inactive-toggle">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+              />
+              Show inactive
+            </label>
+          )}
 
           <button
             type="button"
             className="secondary-btn"
-            onClick={() => window.location.reload()}
-            title="Refresh the page"
+            onClick={() => {
+              setSearch('');
+              setClassFilter('');
+              if (page === 'Students' || page === 'Teachers') setShowInactive(false);
+            }}
+            title="Clear search and filters"
           >
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} /> Clear filters
           </button>
         </div>
       )}
