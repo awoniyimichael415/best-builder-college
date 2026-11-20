@@ -1213,46 +1213,27 @@ function ResourceView({
   const [classesLoading, setClassesLoading] = useState(false);
   const [selectedAdmission, setSelectedAdmission] = useState<any | null>(null);
   const [selectedTeacher, setSelectedTeacher] = useState<any | null>(null);
-  const [subjectOptions, setSubjectOptions] = useState<string[]>([]);
-  const [subjectsLoading, setSubjectsLoading] = useState(false);
+  const [teacherSubjectOptions, setTeacherSubjectOptions] = useState<string[]>(subjects);
   const [teacherClassOptions, setTeacherClassOptions] = useState<string[]>(classes);
   const [teacherDropdownOpen, setTeacherDropdownOpen] = useState<'subjects' | 'classes' | null>(null);
 
   useEffect(() => {
-    if (!admin || !['Teachers', 'Results'].includes(page)) return;
+    if (page !== 'Teachers' || !admin) return;
     let cancelled = false;
-    setSubjectsLoading(true);
 
-    const subjectRequest = request('/subjects', token);
-    const classRequest = page === 'Teachers' ? request('/classes', token) : Promise.resolve([]);
+    // Subjects use the same fixed master list as the Results form.
+    // Classes remain loaded from the school's class records.
+    setTeacherSubjectOptions(subjects);
 
-    Promise.all([subjectRequest, classRequest])
-      .then(([subjectData, classData]: any[]) => {
+    request('/classes', token)
+      .then((classData: any) => {
         if (cancelled) return;
-        const subjectRows = Array.isArray(subjectData) ? subjectData : (subjectData?.subjects || []);
         const classRows = Array.isArray(classData) ? classData : (classData?.classes || []);
-        const savedSubjects = [...new Set<string>(subjectRows
-          .map((item: any) => String(item?.name || '').trim())
-          .filter((name: string) => Boolean(name)))];
-        const savedClasses = [...new Set<string>(classRows
-          .map((item: any) => String(item?.name || '').trim())
-          .filter((name: string) => Boolean(name)))];
-
-        // Results and teacher assignments share the exact subject records
-        // managed on the Admin Subjects page. No separate hardcoded fallback.
-        setSubjectOptions(savedSubjects);
-        if (page === 'Teachers') {
-          setTeacherClassOptions(savedClasses.length ? savedClasses : classes);
-        }
+        const savedClasses = [...new Set<string>(classRows.map((item: any) => String(item.name || '').trim()).filter((name: string) => Boolean(name)))];
+        setTeacherClassOptions(savedClasses.length ? savedClasses : classes);
       })
       .catch(() => {
-        if (!cancelled) {
-          setSubjectOptions([]);
-          if (page === 'Teachers') setTeacherClassOptions(classes);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setSubjectsLoading(false);
+        if (!cancelled) setTeacherClassOptions(classes);
       });
 
     return () => { cancelled = true; };
@@ -1356,7 +1337,7 @@ function ResourceView({
     ],
     Teachers: ['full_name', 'phone', 'email', 'qualification'],
     Classes: ['name', 'level', 'student_count'],
-    Subjects: ['name', 'class_name'],
+    Subjects: ['name'],
     Admissions: [
       'applicant_name', 'class_applying', 'guardian_name',
       'guardian_phone', 'status'
@@ -1483,7 +1464,9 @@ function ResourceView({
 
   const normalizedSearch = search.trim().toLocaleLowerCase();
 
-  const filteredRows = page === 'Students'
+  const filteredRows = page === 'Subjects'
+    ? subjects.map((name, index) => ({ id: `standard-subject-${index}`, name }))
+    : page === 'Students'
     ? (rows as Student[]).filter((student) => {
         const matchesSearch = [student.admission_no, student.full_name]
           .some((value) => String(value || '').toLocaleLowerCase().includes(normalizedSearch));
@@ -1590,11 +1573,13 @@ function ResourceView({
           <p className="muted">
             {page === 'Classes'
               ? `Showing ${displayRows.length} class(es)${classesLoading ? ' · updating student counts…' : ''}`
-              : `Showing ${filteredRows.length} of ${rows.length} record(s)`}
+              : page === 'Subjects'
+                ? `Showing ${filteredRows.length} standard subjects`
+                : `Showing ${filteredRows.length} of ${rows.length} record(s)`}
           </p>
         </div>
 
-        {(admin || (page === 'Results' && role === 'teacher')) && (
+        {(page !== 'Subjects' && (admin || (page === 'Results' && role === 'teacher'))) && (
           <button
             className="primary-btn small"
             onClick={showForm ? cancelForm : beginAdd}
@@ -1603,6 +1588,12 @@ function ResourceView({
           </button>
         )}
       </div>
+
+      {page === 'Subjects' && admin && (
+        <p className="form-hint" style={{ marginTop: 0, marginBottom: '16px' }}>
+          This is the school's standard subject list. The same 29 subjects are used in the Admin Results and Teacher assignment forms to keep subject options consistent.
+        </p>
+      )}
 
       {(page === 'Students' || page === 'Teachers' || page === 'Admissions') && admin && (
         <div className="student-toolbar">
@@ -1736,7 +1727,7 @@ function ResourceView({
                             <X size={16} />
                           </button>
                         </div>
-                        {(name === 'subjects' ? subjectOptions : teacherClassOptions).map((option) => (
+                        {(name === 'subjects' ? teacherSubjectOptions : teacherClassOptions).map((option) => (
                           <label key={option} style={{
                             display: 'flex', flexDirection: 'row', alignItems: 'center',
                             justifyContent: 'flex-start', gap: '9px', width: '100%',
@@ -1757,12 +1748,8 @@ function ResourceView({
                             </span>
                           </label>
                         ))}
-                        {(name === 'subjects' ? subjectOptions : teacherClassOptions).length === 0 && (
-                          <small>
-                            {name === 'subjects' && subjectsLoading
-                              ? 'Loading subjects…'
-                              : `No ${name === 'subjects' ? 'subjects' : 'classes'} are available. Add them from the ${name === 'subjects' ? 'Subjects' : 'Classes'} page first.`}
-                          </small>
+                        {(name === 'subjects' ? teacherSubjectOptions : teacherClassOptions).length === 0 && (
+                          <small>No {name === 'subjects' ? 'subjects' : 'classes'} are available. Add them from the {name === 'subjects' ? 'Subjects' : 'Classes'} page first.</small>
                         )}
                       </div>
                     )}
@@ -1790,8 +1777,8 @@ function ResourceView({
                   </select>
                 ) : page === 'Results' && name === 'subject' ? (
                   <select required value={form[name] || ''} onChange={(e) => setForm({ ...form, [name]: e.target.value })}>
-                    <option value="">{admin && subjectsLoading ? 'Loading subjects…' : 'Select subject'}</option>
-                    {(admin ? subjectOptions : subjects).map((subject) => <option key={subject} value={subject}>{subject}</option>)}
+                    <option value="">Select subject</option>
+                    {subjects.map((subject) => <option key={subject} value={subject}>{subject}</option>)}
                   </select>
                 ) : page === 'Results' && name === 'class_name' ? (
                   <input
@@ -2080,7 +2067,7 @@ function ResourceView({
           <thead>
             <tr>
               {(columns[page] || []).map((column) => (
-                <th key={column}>{title(column)}</th>
+                <th key={column}>{page === 'Subjects' && column === 'name' ? 'Subject' : title(column)}</th>
               ))}
               {(page === 'Students' || page === 'Teachers') && admin ? <th>Portal account</th> : null}
               {page === 'Admissions' || page === 'Results' ? <th>Action</th> : null}
@@ -2503,13 +2490,15 @@ function ResourceView({
       {!displayRows.length && (
         <div className="empty">
           <ClipboardList size={32} />
-          <b>{page === 'Classes' ? 'No classes available' : search ? 'No matching students found' : 'No records found'}</b>
+          <b>{page === 'Classes' ? 'No classes available' : page === 'Subjects' ? 'No subjects available' : search ? 'No matching records found' : 'No records found'}</b>
           <span>
             {page === 'Classes'
               ? 'The standard school classes will appear here once the class list is loaded.'
-              : page === 'Students'
-                ? 'Try another search or add a new student record.'
-                : 'Records will appear here when they are available.'}
+              : page === 'Subjects'
+                ? 'The standard subject list will appear here.'
+                : page === 'Students'
+                  ? 'Try another search or add a new student record.'
+                  : 'Records will appear here when they are available.'}
           </span>
         </div>
       )}
