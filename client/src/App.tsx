@@ -1193,6 +1193,7 @@ function ResourceView({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [classFilter, setClassFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [paymentFee, setPaymentFee] = useState<any | null>(null);
@@ -1487,6 +1488,18 @@ function ResourceView({
             String(application.class_applying || '').trim().toLocaleLowerCase() === classFilter.toLocaleLowerCase();
           return matchesSearch && matchesClass;
         })
+      : page === 'Results'
+        ? rows.filter((result: any) => {
+            if (!normalizedSearch) return true;
+            const student = studentOptions.find((item) => Number(item.id) === Number(result.student_id));
+            return String(student?.admission_no || '').toLocaleLowerCase().includes(normalizedSearch);
+          })
+      : page === 'Results'
+        ? rows.filter((result: any) => {
+            if (!normalizedSearch) return true;
+            const student = studentOptions.find((item) => Number(item.id) === Number(result.student_id));
+            return String(student?.admission_no || '').toLocaleLowerCase().includes(normalizedSearch);
+          })
       : page === 'Teachers'
         ? rows.filter((teacher: any) => {
             const matchesSearch = [teacher.full_name, teacher.email, teacher.phone, teacher.subjects, teacher.classes]
@@ -1507,6 +1520,7 @@ function ResourceView({
           : {}
     );
     setEditingId(null);
+    setStudentSearch('');
     setShowForm(true);
   }
 
@@ -1530,6 +1544,7 @@ function ResourceView({
   function cancelForm() {
     setShowForm(false);
     setEditingId(null);
+    setStudentSearch('');
     setForm({});
   }
 
@@ -1595,14 +1610,16 @@ function ResourceView({
         </p>
       )}
 
-      {(page === 'Students' || page === 'Teachers' || page === 'Admissions') && admin && (
+      {((page === 'Students' || page === 'Teachers' || page === 'Admissions') && admin || page === 'Results' && (admin || role === 'teacher')) && (
         <div className="student-toolbar">
           <div className="student-search">
             <Search size={18} />
             <input
               type="search"
               placeholder={
-                page === 'Teachers'
+                page === 'Results'
+                  ? 'Search results by student admission number...'
+                  : page === 'Teachers'
                   ? 'Search teacher name, email, phone or subject...'
                   : page === 'Admissions'
                     ? 'Search applicant name or admission/application number...'
@@ -1610,7 +1627,7 @@ function ResourceView({
               }
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label={page === 'Admissions' ? 'Search admission applications' : page === 'Students' ? 'Search students' : 'Search teachers'}
+              aria-label={page === 'Results' ? 'Search results by student admission number' : page === 'Admissions' ? 'Search admission applications' : page === 'Students' ? 'Search students' : 'Search teachers'}
             />
           </div>
 
@@ -1755,6 +1772,16 @@ function ResourceView({
                     )}
                   </div>
                 ) : (page === 'Fees' || page === 'Results') && name === 'student_id' ? (
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                  {page === 'Results' && (
+                    <input
+                      type="search"
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      placeholder="Search student by name or admission number..."
+                      aria-label="Search students by name or admission number"
+                    />
+                  )}
                   <select
                     required
                     value={form.student_id ?? ''}
@@ -1769,12 +1796,14 @@ function ResourceView({
                     }}
                   >
                     <option value="">{studentsLoading ? 'Loading students…' : 'Select a student'}</option>
-                    {studentOptions.filter((student) => Number(student.active) !== 0).map((student) => (
+                    {studentOptions.filter((student) => Number(student.active) !== 0 && (page !== 'Results' || [student.full_name, student.admission_no, student.class_name].some((value) => String(value || '').toLocaleLowerCase().includes(studentSearch.trim().toLocaleLowerCase())))).map((student) => (
                       <option key={student.id} value={student.id}>
                         {student.full_name} — {student.admission_no} — {student.class_name}
                       </option>
                     ))}
                   </select>
+                  {page === 'Results' && studentSearch && studentOptions.filter((student) => Number(student.active) !== 0 && [student.full_name, student.admission_no, student.class_name].some((value) => String(value || '').toLocaleLowerCase().includes(studentSearch.trim().toLocaleLowerCase()))).length === 0 && <small>No students match that search.</small>}
+                  </div>
                 ) : page === 'Results' && name === 'subject' ? (
                   <select required value={form[name] || ''} onChange={(e) => setForm({ ...form, [name]: e.target.value })}>
                     <option value="">Select subject</option>
@@ -2067,7 +2096,7 @@ function ResourceView({
           <thead>
             <tr>
               {(columns[page] || []).map((column) => (
-                <th key={column}>{page === 'Subjects' && column === 'name' ? 'Subject' : title(column)}</th>
+                <th key={column}>{page === 'Subjects' && column === 'name' ? 'Subject' : page === 'Results' && column === 'student_id' ? 'Admission No.' : title(column)}</th>
               ))}
               {(page === 'Students' || page === 'Teachers') && admin ? <th>Portal account</th> : null}
               {page === 'Admissions' || page === 'Results' ? <th>Action</th> : null}
@@ -2093,10 +2122,10 @@ function ResourceView({
                       <strong>{Number(row.student_count || 0)}</strong>
                     ) : column === 'body' ? (
                       String(row[column] || '').slice(0, 75)
-                    ) : page === 'Fees' && column === 'student_id' ? (
+                    ) : (page === 'Fees' || page === 'Results') && column === 'student_id' ? (
                       (() => {
                         const student = studentOptions.find((item) => Number(item.id) === Number(row.student_id));
-                        return student ? `${student.full_name} (${student.admission_no})` : `Student ID: ${row.student_id ?? '—'}`;
+                        return student ? (page === 'Results' ? student.admission_no : `${student.full_name} (${student.admission_no})`) : '—';
                       })()
                     ) : page === 'Fees' && ['amount', 'paid', 'balance'].includes(column) ? (
                       money(row[column])
