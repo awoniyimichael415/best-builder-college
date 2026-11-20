@@ -1194,6 +1194,7 @@ function ResourceView({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
+  const [studentDropdownOpen, setStudentDropdownOpen] = useState(false);
   const [classFilter, setClassFilter] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [paymentFee, setPaymentFee] = useState<any | null>(null);
@@ -1542,6 +1543,8 @@ function ResourceView({
   }
 
   function cancelForm() {
+    setStudentDropdownOpen(false);
+    setStudentSearch('');
     setShowForm(false);
     setEditingId(null);
     setStudentSearch('');
@@ -1549,6 +1552,8 @@ function ResourceView({
   }
 
   function handleSubmit(e: any) {
+    setStudentDropdownOpen(false);
+    setStudentSearch('');
     if (editingId !== null) {
       updateRecord(e, editingId);
     } else {
@@ -1772,37 +1777,120 @@ function ResourceView({
                     )}
                   </div>
                 ) : (page === 'Fees' || page === 'Results') && name === 'student_id' ? (
-                  <div style={{ display: 'grid', gap: '8px' }}>
-                  {page === 'Results' && (
-                    <input
-                      type="search"
-                      value={studentSearch}
-                      onChange={(e) => setStudentSearch(e.target.value)}
-                      placeholder="Search student by name or admission number..."
-                      aria-label="Search students by name or admission number"
-                    />
-                  )}
-                  <select
-                    required
-                    value={form.student_id ?? ''}
-                    onChange={(e) => {
-                      const selectedId = e.target.value === '' ? '' : Number(e.target.value);
-                      const selectedStudent = studentOptions.find((student) => Number(student.id) === Number(selectedId));
-                      setForm({
-                        ...form,
-                        student_id: selectedId,
-                        ...(page === 'Results' ? { class_name: selectedStudent?.class_name || '' } : {})
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    {(() => {
+                      const selectedStudent = studentOptions.find(
+                        (student) => Number(student.id) === Number(form.student_id)
+                      );
+                      const matchingStudents = studentOptions.filter((student) => {
+                        if (Number(student.active) === 0) return false;
+                        if (page !== 'Results') return true;
+                        const query = studentSearch.trim().toLocaleLowerCase();
+                        return !query || [student.full_name, student.admission_no].some((value) =>
+                          String(value || '').toLocaleLowerCase().includes(query)
+                        );
                       });
-                    }}
-                  >
-                    <option value="">{studentsLoading ? 'Loading students…' : 'Select a student'}</option>
-                    {studentOptions.filter((student) => Number(student.active) !== 0 && (page !== 'Results' || [student.full_name, student.admission_no, student.class_name].some((value) => String(value || '').toLocaleLowerCase().includes(studentSearch.trim().toLocaleLowerCase())))).map((student) => (
-                      <option key={student.id} value={student.id}>
-                        {student.full_name} — {student.admission_no} — {student.class_name}
-                      </option>
-                    ))}
-                  </select>
-                  {page === 'Results' && studentSearch && studentOptions.filter((student) => Number(student.active) !== 0 && [student.full_name, student.admission_no, student.class_name].some((value) => String(value || '').toLocaleLowerCase().includes(studentSearch.trim().toLocaleLowerCase()))).length === 0 && <small>No students match that search.</small>}
+
+                      return (
+                        <>
+                          <button
+                            type="button"
+                            className="student-picker-trigger"
+                            aria-haspopup="listbox"
+                            aria-expanded={studentDropdownOpen}
+                            onClick={() => {
+                              setStudentDropdownOpen((open) => !open);
+                              setStudentSearch('');
+                            }}
+                            style={{
+                              width: '100%', minHeight: '44px', display: 'flex',
+                              alignItems: 'center', justifyContent: 'space-between',
+                              gap: '10px', padding: '10px 12px', textAlign: 'left',
+                              border: '1px solid #dbe3ef', borderRadius: '9px',
+                              background: '#fff', color: '#243247', cursor: 'pointer'
+                            }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {studentsLoading
+                                ? 'Loading students…'
+                                : selectedStudent
+                                  ? `${selectedStudent.full_name} — ${selectedStudent.admission_no}`
+                                  : 'Select a student by name or admission number'}
+                            </span>
+                            <ChevronDown size={17} />
+                          </button>
+
+                          {studentDropdownOpen && (
+                            <div
+                              className="student-picker-menu"
+                              style={{
+                                position: 'absolute', zIndex: 50, top: 'calc(100% + 5px)',
+                                left: 0, right: 0, maxHeight: '300px', overflow: 'hidden',
+                                border: '1px solid #dbe3ef', borderRadius: '10px',
+                                background: '#fff', boxShadow: '0 12px 30px rgba(15, 23, 42, 0.16)'
+                              }}
+                            >
+                              {page === 'Results' && (
+                                <div style={{ padding: '10px', borderBottom: '1px solid #e8edf4' }}>
+                                  <input
+                                    autoFocus
+                                    type="search"
+                                    value={studentSearch}
+                                    onChange={(e) => setStudentSearch(e.target.value)}
+                                    placeholder="Type a name or admission number…"
+                                    aria-label="Filter students by name or admission number"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Escape') setStudentDropdownOpen(false);
+                                    }}
+                                    style={{ width: '100%' }}
+                                  />
+                                </div>
+                              )}
+                              <div role="listbox" aria-label="Students" style={{ maxHeight: '230px', overflowY: 'auto', padding: '5px' }}>
+                                {matchingStudents.map((student) => (
+                                  <button
+                                    type="button"
+                                    role="option"
+                                    aria-selected={Number(form.student_id) === Number(student.id)}
+                                    key={student.id}
+                                    onClick={() => {
+                                      setForm({
+                                        ...form,
+                                        student_id: Number(student.id),
+                                        ...(page === 'Results' ? { class_name: student.class_name || '' } : {})
+                                      });
+                                      setStudentDropdownOpen(false);
+                                      setStudentSearch('');
+                                    }}
+                                    style={{
+                                      display: 'block', width: '100%', padding: '10px',
+                                      border: 0, borderRadius: '7px', textAlign: 'left',
+                                      background: Number(form.student_id) === Number(student.id) ? '#eaf3ff' : '#fff',
+                                      color: '#243247', cursor: 'pointer'
+                                    }}
+                                  >
+                                    <strong>{student.full_name}</strong>
+                                    <span style={{ display: 'block', marginTop: '3px', fontSize: '12px', color: '#64748b' }}>
+                                      Admission No: {student.admission_no || 'Not assigned'}{page === 'Results' ? ` · ${student.class_name || ''}` : ''}
+                                    </span>
+                                  </button>
+                                ))}
+                                {matchingStudents.length === 0 && (
+                                  <p style={{ margin: 0, padding: '14px', color: '#64748b', fontSize: '13px' }}>
+                                    {studentsLoading ? 'Loading students…' : 'No students match that name or admission number.'}
+                                  </p>
+                                )}
+                              </div>
+                              <div style={{ padding: '7px 10px', borderTop: '1px solid #e8edf4', textAlign: 'right' }}>
+                                <button type="button" className="text-btn" onClick={() => { setStudentDropdownOpen(false); setStudentSearch(''); }}>
+                                  Close
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 ) : page === 'Results' && name === 'subject' ? (
                   <select required value={form[name] || ''} onChange={(e) => setForm({ ...form, [name]: e.target.value })}>
