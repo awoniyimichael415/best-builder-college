@@ -140,6 +140,24 @@ export default function App() {
     }
   }
 
+  async function markAnnouncementRead(id: number) {
+    try {
+      const result = await request(`/announcements/${id}/read`, token, { method: 'POST' });
+      setDashboard((current: any) => ({
+        ...current,
+        unreadAnnouncements: result.unreadCount,
+        announcements: (current.announcements || []).map((item: any) =>
+          Number(item.id) === Number(id) ? { ...item, is_unread: false } : item
+        )
+      }));
+      setRows((current: any[]) => current.map((item: any) =>
+        Number(item.id) === Number(id) ? { ...item, is_unread: false } : item
+      ));
+    } catch (e: any) {
+      setError(e.message || 'Could not update announcement status.');
+    }
+  }
+
   async function login(e: any) {
     e.preventDefault();
     setError('');
@@ -575,6 +593,7 @@ export default function App() {
                 user={portalUser}
                 dashboard={dashboard}
                 go={go}
+                onAnnouncementOpen={markAnnouncementRead}
               />
             ) : page === 'Dashboard' ? (
               <>
@@ -629,11 +648,24 @@ export default function App() {
                   <div className="panel">
                     <div className="panel-title">
                       <h3>Announcements</h3>
-                      <Megaphone />
+                      <span className="dashboard-announcement-shortcut">
+                        {Number(dashboard.unreadAnnouncements || 0) > 0 && (
+                          <span className="announcement-unread-count">{dashboard.unreadAnnouncements}</span>
+                        )}
+                        <button type="button" className="text-btn" onClick={() => go('Announcements')}>Open <ArrowRight size={14} /></button>
+                      </span>
                     </div>
 
                     {(dashboard.announcements || []).map((item: any) => (
-                      <div className="announcement" key={item.id}>
+                      <div
+                        className={`announcement ${item.is_unread ? 'announcement-unread' : ''}`}
+                        key={item.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => markAnnouncementRead(Number(item.id))}
+                        onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') markAnnouncementRead(Number(item.id)); }}
+                      >
+                        {item.is_unread && <span className="announcement-unread-label">NEW · UNREAD</span>}
                         <b>{item.title}</b>
                         <p>{item.body}</p>
                         <small>{item.created_at}</small>
@@ -647,9 +679,9 @@ export default function App() {
             ) : page === 'Fees' && portalUser.role === 'student' ? (
               <StudentFees token={token} rows={rows} />
             ) : page === 'Announcements' && portalUser.role === 'student' ? (
-              <StudentAnnouncements rows={dashboard.announcements || []} />
+              <StudentAnnouncements rows={rows.length ? rows : dashboard.announcements || []} onOpen={markAnnouncementRead} />
             ) : page === 'Announcements' && portalUser.role === 'teacher' ? (
-              <TeacherAnnouncements rows={dashboard.announcements || []} />
+              <TeacherAnnouncements rows={rows.length ? rows : dashboard.announcements || []} onOpen={markAnnouncementRead} />
             ) : page === 'Results' && portalUser.role === 'student' ? (
               <StudentResults token={token} user={portalUser} rows={rows} />
             ) : resourceMap[page] ? (
@@ -664,6 +696,7 @@ export default function App() {
                 updateRecord={updateRecord}
                 updateStatus={updateStatus}
                 deleteFee={deleteFee}
+                markAnnouncementRead={markAnnouncementRead}
                 deleteAdmission={deleteAdmission}
                 deleteStudent={deleteStudent}
                 deleteTeacher={deleteTeacher}
@@ -1230,7 +1263,7 @@ function PublicPage({ page, go }: any) {
 
 function ResourceView({
   page, rows, role, token, form, setForm, saveRecord,
-  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, recordFeePayment, setStudentActive, setTeacherActive,
+  updateRecord, updateStatus, deleteAdmission, deleteStudent, deleteTeacher, deleteFee, markAnnouncementRead, recordFeePayment, setStudentActive, setTeacherActive,
   createStudentAccount, createTeacherAccount
 }: any) {
   const admin = role === 'admin';
@@ -2283,7 +2316,17 @@ function ResourceView({
                     ) : page === 'Classes' && column === 'student_count' ? (
                       <strong>{Number(row.student_count || 0)}</strong>
                     ) : column === 'body' ? (
-                      String(row[column] || '').slice(0, 75)
+                      <>
+                        {String(row[column] || '').slice(0, 75)}
+                        {page === 'Announcements' && row.is_unread && (
+                          <button type="button" className="announcement-unread-label announcement-mark-read" onClick={() => markAnnouncementRead(Number(row.id))}>
+                            NEW · UNREAD — Mark read
+                          </button>
+                        )}
+                        {page === 'Announcements' && !row.is_unread && (
+                          <span className="announcement-read-label">READ</span>
+                        )}
+                      </>
                     ) : (page === 'Fees' || page === 'Results') && column === 'student_id' ? (
                       (() => {
                         const student = studentOptions.find((item) => Number(item.id) === Number(row.student_id));
@@ -2738,7 +2781,7 @@ function ResourceView({
   );
 }
 
-function TeacherAnnouncements({ rows }: { rows: any[] }) {
+function TeacherAnnouncements({ rows, onOpen }: { rows: any[]; onOpen: (id: number) => void }) {
   const [search, setSearch] = useState('');
 
   const announcements = (rows || []).filter((item: any) => {
@@ -2785,9 +2828,16 @@ function TeacherAnnouncements({ rows }: { rows: any[] }) {
       {announcements.length ? (
         <div className="student-announcements-list">
           {announcements.map((item: any) => (
-            <article className="panel student-announcement-card" key={item.id}>
+            <article
+              className={`panel student-announcement-card ${item.is_unread ? 'announcement-unread-card' : 'announcement-read-card'}`}
+              key={item.id}
+              onClick={() => onOpen(Number(item.id))}
+            >
               <div className="student-announcement-card-top">
                 <span className="student-announcement-badge"><Megaphone size={14} /> School notice</span>
+                {item.is_unread
+                  ? <span className="announcement-unread-label">NEW · UNREAD</span>
+                  : <span className="announcement-read-label">READ</span>}
                 <time>{formatDate(item.created_at)}</time>
               </div>
               <h3>{item.title || 'School announcement'}</h3>
@@ -2806,7 +2856,7 @@ function TeacherAnnouncements({ rows }: { rows: any[] }) {
   );
 }
 
-function StudentAnnouncements({ rows }: { rows: any[] }) {
+function StudentAnnouncements({ rows, onOpen }: { rows: any[]; onOpen: (id: number) => void }) {
   const [search, setSearch] = useState('');
 
   const announcements = (rows || []).filter((item: any) => {
@@ -2853,9 +2903,16 @@ function StudentAnnouncements({ rows }: { rows: any[] }) {
       {announcements.length ? (
         <div className="student-announcements-list">
           {announcements.map((item: any) => (
-            <article className="panel student-announcement-card" key={item.id}>
+            <article
+              className={`panel student-announcement-card ${item.is_unread ? 'announcement-unread-card' : 'announcement-read-card'}`}
+              key={item.id}
+              onClick={() => onOpen(Number(item.id))}
+            >
               <div className="student-announcement-card-top">
                 <span className="student-announcement-badge"><Megaphone size={14} /> School notice</span>
+                {item.is_unread
+                  ? <span className="announcement-unread-label">NEW · UNREAD</span>
+                  : <span className="announcement-read-label">READ</span>}
                 <time>{formatAnnouncementDate(item.created_at)}</time>
               </div>
               <h3>{item.title || 'School announcement'}</h3>
@@ -3599,7 +3656,7 @@ function StudentResults({ token, user, rows }: any) {
   );
 }
 
-function StudentDashboard({ token, user, dashboard, go }: any) {
+function StudentDashboard({ token, user, dashboard, go, onAnnouncementOpen }: any) {
   const [results, setResults] = useState<any[]>([]);
   const [fees, setFees] = useState<any[]>([]);
   const [loadingStudentData, setLoadingStudentData] = useState(true);
@@ -3776,11 +3833,12 @@ function StudentDashboard({ token, user, dashboard, go }: any) {
       <div className="panel student-announcements">
         <div className="panel-title">
           <h3>School announcements</h3>
-          <Megaphone />
+          {Number(dashboard.unreadAnnouncements || 0) > 0 && <span className="announcement-unread-count">{dashboard.unreadAnnouncements}</span>}
         </div>
         {(dashboard.announcements || []).length ? (
           dashboard.announcements.map((item: any) => (
-            <div className="announcement" key={item.id}>
+            <div className={`announcement ${item.is_unread ? 'announcement-unread' : ''}`} key={item.id} onClick={() => onAnnouncementOpen(Number(item.id))}>
+              {item.is_unread && <span className="announcement-unread-label">NEW · UNREAD</span>}
               <b>{item.title}</b>
               <p>{item.body}</p>
               <small>{item.created_at}</small>
@@ -3793,4 +3851,6 @@ function StudentDashboard({ token, user, dashboard, go }: any) {
     </div>
   );
 }
+
+
 
